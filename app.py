@@ -87,6 +87,16 @@ st.set_page_config(
     }
 )
 
+import streamlit.components.v1 as components # ←すでにある場合は不要ですが、念のため
+
+# 🔽 83行目あたりにこれを貼り付け
+components.html(
+    """
+    <meta name="google-site-verification" content="<meta name="google-site-verification" content="sPn8aB19Yzn6VTDolIC3wA5oXGCcq8ew4BBvtemmesM" />" />
+    """,
+    height=0,
+)
+
 
 # --- 🔐 サイドバー ---
 st.sidebar.header("⚙️ システム設定")
