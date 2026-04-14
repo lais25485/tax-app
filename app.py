@@ -83,7 +83,7 @@ st.set_page_config(page_title="2026年収の壁診断", layout="centered")
 st.sidebar.header("⚙️ システム設定")
 area_type = st.sidebar.selectbox(
     "お住まいの地域",
-    ["大都市（東京等）", "地方都市", "町村部"]
+    ["大都市（東京・大阪）", "地方都市", "町村部"]
 )
 jumin_limit = 1100000 if "大都市" in area_type else (1065000 if "地方" in area_type else 1030000)
 
