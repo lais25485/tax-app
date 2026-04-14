@@ -120,18 +120,12 @@ if user_resp and user_resp.user:
         st.rerun()
 else:
     try:
-        auth_res = supabase.auth.sign_in_with_oauth({"provider": "google"})
-        # 🌟 ここが修正ポイント：target="_top" にして砂場を突き破る
-        st.sidebar.markdown(
-            f"""
-            <a href="{auth_res.url}" target="_top" style="text-decoration: none;">
-                <div style="background-color: #FF4B4B; color: white; padding: 0.6rem; border-radius: 8px; text-align: center; font-weight: 600; font-family: sans-serif; cursor: pointer; border: none; display: block;">
-                    🌐 Googleでログイン / 新規登録
-                </div>
-            </a>
-            """,
-            unsafe_allow_html=True
-        )
+        # 🌟 改善：JavaScriptで「今のタブをそのまま移動」させる
+        if st.sidebar.button("🌐 Googleでログイン / 新規登録", type="primary", use_container_width=True):
+            auth_res = supabase.auth.sign_in_with_oauth({"provider": "google"})
+            # window.top.location で iframeの砂場を突き破って今のタブを上書き移動！
+            js = f"window.top.location.href = '{auth_res.url}'"
+            st.components.v1.html(f"<script>{js}</script>", height=0)
     except:
         st.sidebar.error("準備中...")
 
