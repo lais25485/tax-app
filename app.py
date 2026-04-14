@@ -81,11 +81,13 @@ st.set_page_config(page_title="2026年収の壁診断", layout="centered")
 
 # --- 🔐 サイドバー ---
 st.sidebar.header("⚙️ システム設定")
+
+# 🌟 修正1：地域名をシンプルに
 area_type = st.sidebar.selectbox(
     "お住まいの地域",
-    ["大都市（東京・大阪）", "地方都市", "町村部"]
+    ["東京・大阪など", "県庁所在地など", "その他の市町村"]
 )
-jumin_limit = 1100000 if "大都市" in area_type else (1065000 if "地方" in area_type else 1030000)
+jumin_limit = 1100000 if "東京" in area_type else (1065000 if "県庁" in area_type else 1030000)
 
 if st.sidebar.button("最初から診断し直す"):
     st.session_state.step = "diagnosis"
@@ -102,7 +104,6 @@ if user_resp and user_resp.user:
     with c2:
         st.write(f"**{user_meta.get('full_name', 'ユーザー')}** さん")
     
-    # 🌟 改善ポイント：超目立つ保存ボタン
     st.sidebar.markdown("<br>", unsafe_allow_html=True)
     st.sidebar.caption("⚠️ 終了・ログアウト前に必ず押してください")
     
@@ -122,12 +123,22 @@ if user_resp and user_resp.user:
     
     if st.sidebar.button("🚪 ログアウト", use_container_width=True):
         supabase.auth.sign_out()
-        st.session_state.clear() # セッションを完全にクリアして初期化
+        st.session_state.clear()
         st.rerun()
 else:
     try:
         auth_res = supabase.auth.sign_in_with_oauth({"provider": "google"})
-        st.sidebar.link_button("🌐 Googleでログイン / 新規登録", auth_res.url, type="primary", use_container_width=True)
+        # 🌟 修正2：新しいタブを開かず、同じ画面でログインに飛ぶHTMLボタン
+        st.sidebar.markdown(
+            f"""
+            <a href="{auth_res.url}" target="_self" style="text-decoration: none;">
+                <div style="background-color: #FF4B4B; color: white; padding: 0.5rem; border-radius: 8px; text-align: center; font-weight: 600; font-family: sans-serif; margin-bottom: 1rem;">
+                    🌐 Googleでログイン / 新規登録
+                </div>
+            </a>
+            """,
+            unsafe_allow_html=True
+        )
     except:
         st.sidebar.error("準備中...")
 
