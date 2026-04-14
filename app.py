@@ -76,6 +76,7 @@ st.set_page_config(page_title="2026年収の壁診断", layout="centered")
 # --- 🔐 サイドバー ---
 st.sidebar.header("⚙️ システム設定")
 
+# 地域名をシンプルに変更
 area_type = st.sidebar.selectbox(
     "お住まいの地域",
     ["東京・大阪など", "県庁所在地など", "その他の市町村"]
@@ -120,12 +121,31 @@ if user_resp and user_resp.user:
         st.rerun()
 else:
     try:
-        # 🌟 改善：JavaScriptで「今のタブをそのまま移動」させる
-        if st.sidebar.button("🌐 Googleでログイン / 新規登録", type="primary", use_container_width=True):
-            auth_res = supabase.auth.sign_in_with_oauth({"provider": "google"})
-            # window.top.location で iframeの砂場を突き破って今のタブを上書き移動！
-            js = f"window.top.location.href = '{auth_res.url}'"
-            st.components.v1.html(f"<script>{js}</script>", height=0)
+        auth_res = supabase.auth.sign_in_with_oauth({"provider": "google"})
+        login_url = auth_res.url
+        
+        # 🌟 解決策：target="_top" を使った本物のリンクボタン
+        st.sidebar.markdown(
+            f"""
+            <a href="{login_url}" target="_top" style="text-decoration: none;">
+                <div style="
+                    background-color: #FF4B4B;
+                    color: white;
+                    padding: 0.6rem 1rem;
+                    border-radius: 8px;
+                    text-align: center;
+                    font-weight: 600;
+                    font-family: sans-serif;
+                    cursor: pointer;
+                    display: block;
+                ">
+                    🌐 Googleでログイン / 新規登録
+                </div>
+            </a>
+            """,
+            unsafe_allow_html=True
+        )
+        st.sidebar.caption("※次回から自動でデータを引き継ぎます")
     except:
         st.sidebar.error("準備中...")
 
