@@ -100,7 +100,20 @@ else:
     st.title("💰 年収の壁シミュレーター")
     st.success(f"👤 あなたの診断区分： **【 {st.session_state.user_category} 】**")
 
-     
+  
+    st.sidebar.header("⚙️ システム設定")
+    area_type = st.sidebar.selectbox(
+        "お住まいの地域（住民税の判定）",
+        ["東京・大阪・名古屋などの大都市", "県庁所在地などの地方都市", "町村部・小規模な市"]
+    )
+    if "大都市" in area_type: jumin_limit = 1100000
+    elif "地方都市" in area_type: jumin_limit = 1065000
+    else: jumin_limit = 1030000
+
+    if st.sidebar.button("最初から診断し直す"):
+        st.session_state.step = "diagnosis"
+        st.rerun()
+        
     # --- 新機能：タブで機能を分ける ---
     tab_quick, tab_monthly = st.tabs(["⚡ サクッと年収判定", "📅 じっくり月別シミュレーション"])
 
