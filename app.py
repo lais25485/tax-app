@@ -12,16 +12,14 @@ def init_connection():
 
 supabase = init_connection()
 
-# --- 🔄 データ復元用の関数（共通化） ---
+# --- 🔄 データ復元用の関数 ---
 def load_and_restore_data(uid):
     try:
         res = supabase.table("user_incomes").select("income_data").eq("user_id", uid).execute()
         if len(res.data) > 0:
             saved_data = res.data[0]["income_data"]
-            # 1. 給与データをセッションに復元
             for i in range(1, 13):
                 st.session_state[f"m{i}"] = saved_data.get(f"m{i}", 0)
-            # 2. 診断結果をセッションに復元
             if "app_settings" in saved_data:
                 settings = saved_data["app_settings"]
                 st.session_state.user_category = settings.get("user_category", "一般")
@@ -33,12 +31,10 @@ def load_and_restore_data(uid):
     return False
 
 # --- 🌟 ログイン処理と自動リダイレクト ---
-# URLにcodeがある場合（Googleから戻った直後）
 if "code" in st.query_params:
     try:
         supabase.auth.exchange_code_for_session({"auth_code": st.query_params["code"]})
         st.query_params.clear()
-        # ログイン直後にデータをチェックして、あれば計算画面へ
         user_resp = supabase.auth.get_user()
         if user_resp and user_resp.user:
             if load_and_restore_data(user_resp.user.id):
@@ -63,14 +59,12 @@ try:
 except:
     pass
 
-# すでにログイン済みで、まだデータ読み込みを試みていない場合の自動復元
 if user_resp and user_resp.user and 'step' not in st.session_state:
     if load_and_restore_data(user_resp.user.id):
         st.session_state.step = "calculation"
     else:
         st.session_state.step = "diagnosis"
 
-# デフォルト値のセット
 if 'step' not in st.session_state: st.session_state.step = "diagnosis"
 if 'target_key' not in st.session_state: st.session_state.target_key = "130万：自分の社保を免除（一般）"
 if 'user_category' not in st.session_state: st.session_state.user_category = "一般"
@@ -82,7 +76,6 @@ st.set_page_config(page_title="2026年収の壁診断", layout="centered")
 # --- 🔐 サイドバー ---
 st.sidebar.header("⚙️ システム設定")
 
-# 🌟 修正1：地域名をシンプルに
 area_type = st.sidebar.selectbox(
     "お住まいの地域",
     ["東京・大阪など", "県庁所在地など", "その他の市町村"]
@@ -105,7 +98,7 @@ if user_resp and user_resp.user:
         st.write(f"**{user_meta.get('full_name', 'ユーザー')}** さん")
     
     st.sidebar.markdown("<br>", unsafe_allow_html=True)
-    st.sidebar.caption("⚠️ 終了・ログアウト前に必ず押してください")
+    st.sidebar.caption("⚠️ 終了前に必ず押してください")
     
     if st.sidebar.button("💾 データをクラウドに保存", type="primary", use_container_width=True):
         uid = user_resp.user.id
@@ -116,7 +109,7 @@ if user_resp and user_resp.user:
             "target_key": st.session_state.target_key
         }
         supabase.table("user_incomes").upsert({"user_id": uid, "income_data": data}).execute()
-        st.toast("クラウドにデータを保存しました！", icon="☁️")
+        st.toast("クラウドに保存しました！", icon="☁️")
         st.sidebar.success("保存完了！")
     
     st.sidebar.divider()
@@ -128,11 +121,11 @@ if user_resp and user_resp.user:
 else:
     try:
         auth_res = supabase.auth.sign_in_with_oauth({"provider": "google"})
-        # 🌟 修正2：新しいタブを開かず、同じ画面でログインに飛ぶHTMLボタン
+        # 🌟 ここが修正ポイント：target="_top" にして砂場を突き破る
         st.sidebar.markdown(
             f"""
-            <a href="{auth_res.url}" target="_self" style="text-decoration: none;">
-                <div style="background-color: #FF4B4B; color: white; padding: 0.5rem; border-radius: 8px; text-align: center; font-weight: 600; font-family: sans-serif; margin-bottom: 1rem;">
+            <a href="{auth_res.url}" target="_top" style="text-decoration: none;">
+                <div style="background-color: #FF4B4B; color: white; padding: 0.6rem; border-radius: 8px; text-align: center; font-weight: 600; font-family: sans-serif; cursor: pointer; border: none; display: block;">
                     🌐 Googleでログイン / 新規登録
                 </div>
             </a>
@@ -151,7 +144,6 @@ if st.session_state.step == "diagnosis":
         supporter = st.radio("誰の扶養ですか？", ["親", "配偶者", "なし"])
         if st.form_submit_button("診断を開始"):
             tax_age = YEAR - birth_date.year
-            # 区分判定ロジック
             if 19 <= tax_age <= 22 and job == "大学生" and supporter == "親":
                 st.session_state.user_category, st.session_state.shaho_limit = "特定学生", 1500000
             elif supporter == "配偶者":
@@ -159,17 +151,11 @@ if st.session_state.step == "diagnosis":
             else:
                 st.session_state.user_category, st.session_state.shaho_limit = "一般", 1300000
             
-            # 目標設定の初期値
-            if supporter == "なし":
-                st.session_state.target_key = "160万：自分の所得税を0円に"
-            elif supporter == "配偶者":
-                st.session_state.target_key = "123万：家族の税金を守る"
+            if supporter == "なし": st.session_state.target_key = "160万：自分の所得税を0円に"
+            elif supporter == "配偶者": st.session_state.target_key = "123万：家族の税金を守る"
             else:
-                if st.session_state.user_category == "特定学生":
-                    st.session_state.target_key = "150万：自分の社保を免除（特定学生特例）"
-                else:
-                    st.session_state.target_key = "130万：自分の社保を免除（一般）"
-
+                if st.session_state.user_category == "特定学生": st.session_state.target_key = "150万：自分の社保を免除（特定学生特例）"
+                else: st.session_state.target_key = "130万：自分の社保を免除（一般）"
             st.session_state.step = "calculation"
             st.rerun()
 
@@ -181,19 +167,17 @@ else:
     tab1, tab2 = st.tabs(["⚡ クイック判定", "📅 月別詳細"])
     
     with tab1:
-        st.header("今年の想定年収を入力するだけ")
+        st.header("今年の想定年収を入力")
         est = st.number_input("想定年収", value=1000000, step=10000)
         c1, c2 = st.columns(2)
         with c1:
             if est > jumin_limit: st.error(f"❌ **住民税:** 発生見込み\n({jumin_limit/10000:.1f}万超)")
             else: st.success("✅ **住民税:** 非課税")
-            
             if est > 1600000: st.error("❌ **所得税:** 発生見込み")
             else: st.success("✅ **所得税:** 非課税")
         with c2:
             if est >= st.session_state.shaho_limit: st.error(f"❌ **社会保険:** 扶養外\n({st.session_state.shaho_limit/10000:.1f}万以上)")
             else: st.success("✅ **社会保険:** 扶養内")
-            
             if est > 1230000: st.warning("⚠️ **扶養者の税金:** 影響あり")
             else: st.success("✅ **扶養者の税金:** 影響なし")
         
@@ -202,31 +186,20 @@ else:
         st.session_state.target_key = selected_key
         final_target = WALL_DETAILS[selected_key]
         avg_limit = final_target / 12
-
         st.header("📅 毎月の給与を入力")
-        st.caption(f"目標維持の目安：月額 {avg_limit:,.0f} 円以内")
-        
         incomes = []
         cols = st.columns(3)
         for i in range(1, 13):
             with cols[(i-1)%3]:
                 val = st.session_state.get(f"m{i}", 0)
-                # number_inputの変更を即座にセッションに反映させる
                 st.number_input(f"{i}月", key=f"m{i}", value=val, min_value=0, step=1000)
                 val_updated = st.session_state.get(f"m{i}", 0)
                 incomes.append(val_updated)
-                
-                if val_updated > avg_limit:
-                    st.markdown("<span style='color:#ff4b4b'>● 超過</span>", unsafe_allow_html=True)
-                elif val_updated > 0:
-                    st.markdown("<span style='color:#24df3b'>● 安全</span>", unsafe_allow_html=True)
-        
-        total = sum(incomes)
-        remaining = final_target - total
-        
+                if val_updated > avg_limit: st.markdown("<span style='color:#ff4b4b'>● 超過</span>", unsafe_allow_html=True)
+                elif val_updated > 0: st.markdown("<span style='color:#24df3b'>● 安全</span>", unsafe_allow_html=True)
         st.divider()
         st.subheader("📊 分析結果")
         c_m1, c_m2 = st.columns(2)
-        c_m1.metric("現在の合計年収", f"{total:,} 円")
-        c_m2.metric("目標まであと", f"{remaining:,} 円", delta=-total, delta_color="inverse")
-        st.progress(min(total/final_target, 1.0))
+        c_m1.metric("現在の合計年収", f"{sum(incomes):,} 円")
+        c_m2.metric("目標まであと", f"{final_target - sum(incomes):,} 円", delta=-sum(incomes), delta_color="inverse")
+        st.progress(min(sum(incomes)/final_target, 1.0))
