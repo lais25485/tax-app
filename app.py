@@ -98,10 +98,10 @@ if st.session_state.step == "diagnosis":
 # --- B. 計算・シミュレーションモード ---
 else:
     st.title("💰 年収の壁シミュレーター")
-    st.success(f"👤 診断区分： **【 {st.session_state.user_category} 】**")
+    st.success(f"👤 あなたの診断区分： **【 {st.session_state.user_category} 】**")
 
     # サイドバー：設定
-    st.sidebar.header("⚙️ 基本設定")
+    st.sidebar.header("⚙️ システム設定")
     area_type = st.sidebar.selectbox(
         "お住まいの地域（住民税の判定）",
         ["東京・大阪・名古屋などの大都市", "県庁所在地などの地方都市", "町村部・小規模な市"]
@@ -117,39 +117,47 @@ else:
     # --- 新機能：タブで機能を分ける ---
     tab_quick, tab_monthly = st.tabs(["⚡ サクッと年収判定", "📅 じっくり月別シミュレーション"])
 
-    # --- タブ1：クイック判定 ---
+    # ==========================================
+    # タブ1：サクッと年収判定
+    # ==========================================
     with tab_quick:
-        st.header("想定年収でリスク判定")
-        est_income = st.number_input("今年の想定年収 (円)", min_value=0, step=10000, value=1000000)
+        st.header("今年の想定年収を入力するだけ")
+        est_income = st.number_input("あなたの想定年収 (円)", min_value=0, step=10000, value=1000000)
         
-        st.subheader("📋 制度に基づく自動判定レポート")
+        st.subheader("📋 支払いの発生状況")
+        
         c1, c2 = st.columns(2)
         with c1:
             if est_income > jumin_limit:
-                st.error(f"❌ **住民税:** 発生見込み\n({jumin_limit/10000:.1f}万超)")
+                st.error("❌ **住民税:** 発生します（約5,000円〜）")
             else:
-                st.success(f"✅ **住民税:** 非課税")
+                st.success(f"✅ **住民税:** 0円（{jumin_limit/10000:.1f}万以下）")
             
             if est_income > 1600000:
-                st.error("❌ **所得税:** 発生見込み")
+                st.error("❌ **所得税:** 発生します")
             else:
-                st.success("✅ **所得税:** 非課税")
+                st.success("✅ **所得税:** 0円（160万以下）")
+                
         with c2:
             if est_income >= st.session_state.shaho_limit:
-                st.error(f"❌ **社会保険:** 扶養外\n({st.session_state.shaho_limit/10000:.1f}万以上)")
+                st.error(f"❌ **社会保険:** 加入義務あり（手取りが減ります）")
             else:
-                st.success(f"✅ **社会保険:** 扶養内")
+                st.success(f"✅ **社会保険:** 扶養内（{st.session_state.shaho_limit/10000:.1f}万未満）")
             
             if est_income > 1230000:
-                st.warning("⚠️ **扶養者の税金:** 影響あり")
+                st.warning("⚠️ **家族の税金:** 扶養者の税金が上がります")
             else:
-                st.success("✅ **扶養者の税金:** 影響なし")
+                st.success("✅ **家族の税金:** 影響なし（123万以下）")
+        
+        st.info("💡 さらに詳しく月ごとのペース配分を知りたい場合は、上の「📅 じっくり月別シミュレーション」タブを押してください。")
 
-    # --- タブ2：月別シミュレーション ---
+    # ==========================================
+    # タブ2：じっくり月別シミュレーション
+    # ==========================================
     with tab_monthly:
-        st.header("🎯 目標ライン設定")
+        st.header("🎯 目標設定")
         selected_key = st.selectbox(
-            "目標とする「壁」の選択",
+            "目標とする「壁」を選んでください",
             options=list(WALL_DETAILS.keys()),
             index=list(WALL_DETAILS.keys()).index(st.session_state.target_key)
         )
@@ -157,34 +165,32 @@ else:
         avg_limit = final_target / 12
 
         st.header("📅 毎月の給与を入力")
-        st.caption(f"目標維持の目安：月額 {avg_limit:,.0f} 円以内")
+        st.caption(f"1ヶ月の目安：{avg_limit:,.0f}円以内ならセーフ")
         
-        # スマホでの並び順修正：3列の行を4回繰り返す
+        cols = st.columns(3)
         incomes = []
-        for r in range(4):
-            cols = st.columns(3)
-            for c in range(3):
-                m_index = r * 3 + c + 1
-                with cols[c]:
-                    st.number_input(f"{m_index}月", min_value=0, step=1000, key=f"m{m_index}")
-                    val = st.session_state.get(f"m{m_index}", 0)
-                    incomes.append(val)
-                    if val > avg_limit:
-                        st.markdown("<span style='color:#ff4b4b'>● 超過</span>", unsafe_allow_html=True)
-                    elif val > 0:
-                        st.markdown("<span style='color:#24df3b'>● 安全</span>", unsafe_allow_html=True)
+        for i in range(1, 13):
+            with cols[(i-1)%3]:
+                st.number_input(f"{i}月", min_value=0, step=1000, key=f"m{i}")
+                val = st.session_state.get(f"m{i}", 0)
+                incomes.append(val)
+                if val > avg_limit:
+                    st.markdown("<span style='color:#ff4b4b'>● 超過</span>", unsafe_allow_html=True)
+                elif val > 0:
+                    st.markdown("<span style='color:#24df3b'>● セーフ</span>", unsafe_allow_html=True)
 
         total = sum(incomes)
         remaining = final_target - total
 
         st.divider()
-        st.subheader("📊 分析結果")
+        st.subheader("⭕ 進捗メーター")
         c_m1, c_m2 = st.columns(2)
         c_m1.metric("現在の合計年収", f"{total:,} 円")
         c_m2.metric("目標まであと", f"{remaining:,} 円", delta=-total, delta_color="inverse")
         
-        st.progress(min(total / final_target, 1.0))
+        progress_pct = min(total / final_target, 1.0)
+        st.progress(progress_pct)
         
-        # グラフ
+        st.subheader("📊 月別グラフ")
         df = pd.DataFrame({"月": [f"{i}月" for i in range(1, 13)], "収入": incomes})
         st.bar_chart(df, x="月", y="収入", color="#4db8ff")
