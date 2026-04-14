@@ -121,19 +121,31 @@ if user_resp and user_resp.user:
 else:
     try:
         auth_res = supabase.auth.sign_in_with_oauth({"provider": "google"})
-        # 🌟 ここが修正ポイント：target="_top" にして砂場を突き破る
+        login_url = auth_res.url
         st.sidebar.markdown(
-            f"""
-            <a href="{auth_res.url}" target="_top" style="text-decoration: none;">
-                <div style="background-color: #FF4B4B; color: white; padding: 0.6rem; border-radius: 8px; text-align: center; font-weight: 600; font-family: sans-serif; cursor: pointer; border: none; display: block;">
-                    🌐 Googleでログイン / 新規登録
-                </div>
-            </a>
-            """,
+            f'<a href="{login_url}" target="_top" style="text-decoration:none;"><div style="background-color:#FF4B4B;color:white;padding:0.6rem;border-radius:8px;text-align:center;font-weight:600;">🌐 Googleでログイン / 新規登録</div></a>',
             unsafe_allow_html=True
         )
     except:
         st.sidebar.error("準備中...")
+
+# --- ☕ 応援ボタンエリア ---
+st.sidebar.divider()
+st.sidebar.header("💛 開発を応援")
+support_url = "https://buymeacoffee.com/isseiotsuka" # ここを自分のURLに書き換えてね！
+st.sidebar.markdown(
+    f"""
+    <div style="background-color: #f0f2f6; padding: 1rem; border-radius: 10px; border: 1px solid #ddd;">
+        <p style="font-size: 0.8rem; color: #555; margin-bottom: 0.8rem;">学生エンジニアが運営しています。応援いただけると励みになります！</p>
+        <a href="{support_url}" target="_blank" style="text-decoration: none;">
+            <div style="background-color: #FFDD00; color: black; padding: 0.5rem; border-radius: 5px; text-align: center; font-weight: bold;">
+                ☕ コーヒーをおごる
+            </div>
+        </a>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # --- A. 診断モード ---
 if st.session_state.step == "diagnosis":
