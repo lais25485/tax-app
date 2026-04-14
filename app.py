@@ -1,6 +1,17 @@
 import streamlit as st
 from datetime import date
 import pandas as pd
+from supabase import create_client, Client
+
+# --- Supabase 接続設定 ---
+@st.cache_resource
+def init_connection():
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
+
+supabase = init_connection()
+
 
 # --- 1. 基礎データ定義 (2026年基準) ---
 YEAR = 2026
@@ -27,6 +38,19 @@ if 'shaho_limit' not in st.session_state:
 
 # --- 3. アプリ設定 ---
 st.set_page_config(page_title="2026年収の壁診断", layout="centered")
+
+# 🔽🔽 ここに移動（if文の前に置くことで常に表示されます） 🔽🔽
+st.sidebar.header("🔐 データ保存（ログイン）")
+try:
+    auth_res = supabase.auth.sign_in_with_oauth({"provider": "google"})
+    st.sidebar.link_button("🌐 Googleでログイン", auth_res.url)
+    st.sidebar.caption("※次回から入力データを引き継げます")
+except Exception as e:
+    st.sidebar.error("ログインシステム準備中...")
+st.sidebar.divider()
+# 🔼🔼 移動ここまで 🔼🔼
+
+
 
 # --- A. 診断モード ---
 if st.session_state.step == "diagnosis":
@@ -76,20 +100,7 @@ else:
     st.title("💰 年収の壁シミュレーター")
     st.success(f"👤 あなたの診断区分： **【 {st.session_state.user_category} 】**")
 
-    # サイドバー：設定
-    st.sidebar.header("⚙️ 基本設定")
-    area_type = st.sidebar.selectbox(
-        "お住まいの地域（住民税の基準に影響）",
-        ["東京・大阪・名古屋などの大都市", "県庁所在地などの地方都市", "町村部・小規模な市"]
-    )
-    if "大都市" in area_type: jumin_limit = 1100000
-    elif "地方都市" in area_type: jumin_limit = 1065000
-    else: jumin_limit = 1030000
-
-    if st.sidebar.button("最初から診断し直す"):
-        st.session_state.step = "diagnosis"
-        st.rerun()
-
+     
     # --- 新機能：タブで機能を分ける ---
     tab_quick, tab_monthly = st.tabs(["⚡ サクッと年収判定", "📅 じっくり月別シミュレーション"])
 
