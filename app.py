@@ -12,7 +12,6 @@ def init_connection():
 
 supabase = init_connection()
 
-
 # --- 1. 基礎データ定義 (2026年基準) ---
 YEAR = 2026
 WALL_DETAILS = {
@@ -35,7 +34,21 @@ if 'shaho_limit' not in st.session_state:
 # --- 3. アプリ設定 ---
 st.set_page_config(page_title="2026年収の壁診断", layout="centered")
 
-# 🔽🔽 ここに移動（if文の前に置くことで常に表示されます） 🔽🔽
+# --- 🔐 サイドバー（ログインと設定） ---
+st.sidebar.header("⚙️ システム設定")
+area_type = st.sidebar.selectbox(
+    "お住まいの地域（住民税の判定）",
+    ["東京・大阪・名古屋などの大都市", "県庁所在地などの地方都市", "町村部・小規模な市"]
+)
+if "大都市" in area_type: jumin_limit = 1100000
+elif "地方都市" in area_type: jumin_limit = 1065000
+else: jumin_limit = 1030000
+
+if st.sidebar.button("最初から診断し直す"):
+    st.session_state.step = "diagnosis"
+    st.rerun()
+
+st.sidebar.divider()
 st.sidebar.header("🔐 データ保存（ログイン）")
 try:
     auth_res = supabase.auth.sign_in_with_oauth({"provider": "google"})
@@ -43,31 +56,21 @@ try:
     st.sidebar.caption("※次回から入力データを引き継げます")
 except Exception as e:
     st.sidebar.error("ログインシステム準備中...")
-st.sidebar.divider()
-# 🔼🔼 移動ここまで 🔼🔼
-
 
 
 # --- A. 診断モード ---
 if st.session_state.step == "diagnosis":
     st.title("🛡️ あなたの「壁」を診断しましょう")
-    st.write("2026年度（令和8年度）の最新税制に基づき、あなたに最適な基準をセットします。")
+    st.write("質問に答えて、2026年度の最新基準をセットします。")
     
     with st.form("survey"):
-        # カレンダーの範囲を1940年からに拡張
-        birth_date = st.date_input(
-            "生年月日", 
-            value=date(1985, 1, 1),
-            min_value=date(1940, 1, 1),
-            max_value=date(YEAR, 12, 31)
-        )
+        birth_date = st.date_input("生年月日", value=date(1990, 1, 1), min_value=date(1940, 1, 1), max_value=date(YEAR, 12, 31))
         job = st.radio("現在の状況", ["主婦・主夫", "大学生", "高校生", "フリーター・その他"])
         supporter = st.radio("誰の扶養に入っていますか？", ["配偶者", "親", "誰の扶養でもない"])
         
         if st.form_submit_button("診断を開始"):
             tax_age = YEAR - birth_date.year
             
-            # ユーザー区分の判定
             if 19 <= tax_age <= 22 and job == "大学生" and supporter == "親":
                 st.session_state.user_category = "特定学生（19〜22歳）"
                 st.session_state.shaho_limit = 1500000
@@ -81,7 +84,6 @@ if st.session_state.step == "diagnosis":
                 st.session_state.user_category = "一般（扶養内）"
                 st.session_state.shaho_limit = 1300000
 
-            # おすすめの壁を初期セット
             if supporter == "誰の扶養でもない":
                 st.session_state.target_key = "160万：自分の所得税を0円に"
             elif supporter == "配偶者":
@@ -98,99 +100,117 @@ if st.session_state.step == "diagnosis":
 # --- B. 計算・シミュレーションモード ---
 else:
     st.title("💰 年収の壁シミュレーター")
-    st.success(f"👤 あなたの診断区分： **【 {st.session_state.user_category} 】**")
+    st.success(f"👤 診断区分： **【 {st.session_state.user_category} 】**")
 
-    # サイドバー：設定
-    st.sidebar.header("⚙️ システム設定")
-    area_type = st.sidebar.selectbox(
-        "お住まいの地域（住民税の判定）",
-        ["東京・大阪・名古屋などの大都市", "県庁所在地などの地方都市", "町村部・小規模な市"]
-    )
-    if "大都市" in area_type: jumin_limit = 1100000
-    elif "地方都市" in area_type: jumin_limit = 1065000
-    else: jumin_limit = 1030000
-
-    if st.sidebar.button("最初から診断し直す"):
-        st.session_state.step = "diagnosis"
-        st.rerun()
-
-    # --- 新機能：タブで機能を分ける ---
     tab_quick, tab_monthly = st.tabs(["⚡ サクッと年収判定", "📅 じっくり月別シミュレーション"])
 
-    # ==========================================
-    # タブ1：サクッと年収判定
-    # ==========================================
+    # タブ1：クイック
     with tab_quick:
         st.header("今年の想定年収を入力するだけ")
         est_income = st.number_input("あなたの想定年収 (円)", min_value=0, step=10000, value=1000000)
         
-        st.subheader("📋 支払いの発生状況")
-        
+        st.subheader("📋 制度に基づく自動判定レポート")
         c1, c2 = st.columns(2)
         with c1:
             if est_income > jumin_limit:
-                st.error("❌ **住民税:** 発生します（約5,000円〜）")
+                st.error(f"❌ **住民税:** 発生見込み\n({jumin_limit/10000:.1f}万超)")
             else:
-                st.success(f"✅ **住民税:** 0円（{jumin_limit/10000:.1f}万以下）")
+                st.success(f"✅ **住民税:** 非課税")
             
             if est_income > 1600000:
-                st.error("❌ **所得税:** 発生します")
+                st.error("❌ **所得税:** 発生見込み")
             else:
-                st.success("✅ **所得税:** 0円（160万以下）")
-                
+                st.success("✅ **所得税:** 非課税")
         with c2:
             if est_income >= st.session_state.shaho_limit:
-                st.error(f"❌ **社会保険:** 加入義務あり（手取りが減ります）")
+                st.error(f"❌ **社会保険:** 扶養外\n({st.session_state.shaho_limit/10000:.1f}万以上)")
             else:
-                st.success(f"✅ **社会保険:** 扶養内（{st.session_state.shaho_limit/10000:.1f}万未満）")
+                st.success(f"✅ **社会保険:** 扶養内")
             
             if est_income > 1230000:
-                st.warning("⚠️ **家族の税金:** 扶養者の税金が上がります")
+                st.warning("⚠️ **扶養者の税金:** 影響あり")
             else:
-                st.success("✅ **家族の税金:** 影響なし（123万以下）")
-        
-        st.info("💡 さらに詳しく月ごとのペース配分を知りたい場合は、上の「📅 じっくり月別シミュレーション」タブを押してください。")
+                st.success("✅ **扶養者の税金:** 影響なし")
 
-    # ==========================================
-    # タブ2：じっくり月別シミュレーション
-    # ==========================================
+    # タブ2：月別
     with tab_monthly:
-        st.header("🎯 目標設定")
+        st.header("🎯 目標ライン設定")
         selected_key = st.selectbox(
-            "目標とする「壁」を選んでください",
+            "目標とする「壁」の選択",
             options=list(WALL_DETAILS.keys()),
             index=list(WALL_DETAILS.keys()).index(st.session_state.target_key)
         )
         final_target = WALL_DETAILS[selected_key]
         avg_limit = final_target / 12
 
-        st.header("📅 毎月の給与を入力")
-        st.caption(f"1ヶ月の目安：{avg_limit:,.0f}円以内ならセーフ")
+        # ⭐️ 新機能：クラウド保存＆読み込みボタン ⭐️
+        st.subheader("☁️ クラウド連携")
+        col_load, col_save = st.columns(2)
         
-        cols = st.columns(3)
+        with col_save:
+            if st.button("💾 入力データを保存"):
+                try:
+                    user_resp = supabase.auth.get_user()
+                    if user_resp and user_resp.user:
+                        uid = user_resp.user.id
+                        # 1〜12月のデータを辞書（JSON）にまとめる
+                        data_to_save = {f"m{i}": st.session_state.get(f"m{i}", 0) for i in range(1, 13)}
+                        # データベースの引き出しに保存（すでにデータがあれば上書き）
+                        supabase.table("user_incomes").upsert({"user_id": uid, "income_data": data_to_save}).execute()
+                        st.success("クラウドに保存しました！")
+                    else:
+                        st.error("先にGoogleでログインしてください")
+                except Exception as e:
+                    st.error("ログインが必要です")
+
+        with col_load:
+            if st.button("🔄 保存データを読み込む"):
+                try:
+                    user_resp = supabase.auth.get_user()
+                    if user_resp and user_resp.user:
+                        uid = user_resp.user.id
+                        # データベースから自分のデータを検索
+                        res = supabase.table("user_incomes").select("income_data").eq("user_id", uid).execute()
+                        if len(res.data) > 0:
+                            saved_data = res.data[0]["income_data"]
+                            # 画面にデータを復元
+                            for i in range(1, 13):
+                                st.session_state[f"m{i}"] = saved_data.get(f"m{i}", 0)
+                            st.success("データを読み込みました！画面を更新して反映します。")
+                        else:
+                            st.info("保存されたデータがありません")
+                    else:
+                        st.error("先にGoogleでログインしてください")
+                except Exception as e:
+                    st.error("ログインが必要です")
+
+        st.header("📅 毎月の給与を入力")
+        st.caption(f"目標維持の目安：月額 {avg_limit:,.0f} 円以内")
+        
         incomes = []
-        for i in range(1, 13):
-            with cols[(i-1)%3]:
-                st.number_input(f"{i}月", min_value=0, step=1000, key=f"m{i}")
-                val = st.session_state.get(f"m{i}", 0)
-                incomes.append(val)
-                if val > avg_limit:
-                    st.markdown("<span style='color:#ff4b4b'>● 超過</span>", unsafe_allow_html=True)
-                elif val > 0:
-                    st.markdown("<span style='color:#24df3b'>● セーフ</span>", unsafe_allow_html=True)
+        for r in range(4):
+            cols = st.columns(3)
+            for c in range(3):
+                m_index = r * 3 + c + 1
+                with cols[c]:
+                    st.number_input(f"{m_index}月", min_value=0, step=1000, key=f"m{m_index}")
+                    val = st.session_state.get(f"m{m_index}", 0)
+                    incomes.append(val)
+                    if val > avg_limit:
+                        st.markdown("<span style='color:#ff4b4b'>● 超過</span>", unsafe_allow_html=True)
+                    elif val > 0:
+                        st.markdown("<span style='color:#24df3b'>● 安全</span>", unsafe_allow_html=True)
 
         total = sum(incomes)
         remaining = final_target - total
 
         st.divider()
-        st.subheader("⭕ 進捗メーター")
+        st.subheader("📊 分析結果")
         c_m1, c_m2 = st.columns(2)
         c_m1.metric("現在の合計年収", f"{total:,} 円")
         c_m2.metric("目標まであと", f"{remaining:,} 円", delta=-total, delta_color="inverse")
         
-        progress_pct = min(total / final_target, 1.0)
-        st.progress(progress_pct)
+        st.progress(min(total / final_target, 1.0))
         
-        st.subheader("📊 月別グラフ")
         df = pd.DataFrame({"月": [f"{i}月" for i in range(1, 13)], "収入": incomes})
         st.bar_chart(df, x="月", y="収入", color="#4db8ff")
