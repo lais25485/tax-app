@@ -12,6 +12,41 @@ def init_connection():
 
 supabase = init_connection()
 
+# --- 🌟 ログインから戻ってきた時の「賢い案内処理」 ---
+if "code" in st.query_params:
+    try:
+        supabase.auth.exchange_code_for_session({"auth_code": st.query_params["code"]})
+        st.query_params.clear() # URLを綺麗にする
+        
+        # データベースをチェックして、初めての人かリピーターか判断する！
+        user_resp = supabase.auth.get_user()
+        if user_resp and user_resp.user:
+            uid = user_resp.user.id
+            res = supabase.table("user_incomes").select("income_data").eq("user_id", uid).execute()
+            
+            if len(res.data) > 0:
+                # リピーター：過去の給与と「診断結果」をすべて復元してワープ！
+                saved_data = res.data[0]["income_data"]
+                
+                # 給与を復元
+                for i in range(1, 13):
+                    st.session_state[f"m{i}"] = saved_data.get(f"m{i}", 0)
+                
+                # 診断結果（設定）を復元
+                if "app_settings" in saved_data:
+                    st.session_state.user_category = saved_data["app_settings"].get("user_category", "一般")
+                    st.session_state.shaho_limit = saved_data["app_settings"].get("shaho_limit", 1300000)
+                    st.session_state.target_key = saved_data["app_settings"].get("target_key", "130万：自分の社保を免除（一般）")
+                
+                st.session_state.step = "calculation" # 計算画面へスキップ
+            else:
+                # 初回ユーザー：データがないので診断画面からスタート
+                st.session_state.step = "diagnosis"
+                
+        st.rerun()
+    except Exception as e:
+        pass
+
 # --- 1. 基礎データ定義 (2026年基準) ---
 YEAR = 2026
 WALL_DETAILS = {
@@ -34,7 +69,7 @@ if 'shaho_limit' not in st.session_state:
 # --- 3. アプリ設定 ---
 st.set_page_config(page_title="2026年収の壁診断", layout="centered")
 
-# --- 🔐 サイドバー（ログインと設定） ---
+# --- 🔐 サイドバー（設定とアカウント） ---
 st.sidebar.header("⚙️ システム設定")
 area_type = st.sidebar.selectbox(
     "お住まいの地域（住民税の判定）",
@@ -49,13 +84,41 @@ if st.sidebar.button("最初から診断し直す"):
     st.rerun()
 
 st.sidebar.divider()
-st.sidebar.header("🔐 データ保存（ログイン）")
+st.sidebar.header("🔐 アカウント")
+
+# 現在のログイン状態を確認してサイドバーの表示を切り替え
+current_user = None
 try:
-    auth_res = supabase.auth.sign_in_with_oauth({"provider": "google"})
-    st.sidebar.link_button("🌐 Googleでログイン", auth_res.url)
-    st.sidebar.caption("※次回から入力データを引き継げます")
-except Exception as e:
-    st.sidebar.error("ログインシステム準備中...")
+    user_resp = supabase.auth.get_user()
+    if user_resp and user_resp.user:
+        current_user = user_resp.user
+except:
+    pass
+
+if current_user:
+    # ✅ ログイン成功時：Googleのアイコンと名前を表示
+    user_meta = current_user.user_metadata
+    avatar_url = user_meta.get("avatar_url", "https://www.gravatar.com/avatar/?d=mp")
+    name = user_meta.get("full_name", "ユーザー")
+    
+    c1, c2 = st.sidebar.columns([1, 3])
+    with c1:
+        st.image(avatar_url, use_container_width=True)
+    with c2:
+        st.write(f"**{name}** さん")
+        
+    if st.sidebar.button("🚪 ログアウト"):
+        supabase.auth.sign_out()
+        st.session_state.step = "diagnosis" # ログアウトしたら最初の画面へ戻す
+        st.rerun()
+else:
+    # ❌ 未ログイン時：いつものログインボタンを表示
+    try:
+        auth_res = supabase.auth.sign_in_with_oauth({"provider": "google"})
+        st.sidebar.link_button("🌐 Googleでログイン / 新規登録", auth_res.url)
+        st.sidebar.caption("※次回から自動でデータを引き継ぎます")
+    except Exception as e:
+        st.sidebar.error("ログインシステム準備中...")
 
 
 # --- A. 診断モード ---
@@ -143,7 +206,6 @@ else:
         final_target = WALL_DETAILS[selected_key]
         avg_limit = final_target / 12
 
-        # ⭐️ 新機能：クラウド保存＆読み込みボタン ⭐️
         st.subheader("☁️ クラウド連携")
         col_load, col_save = st.columns(2)
         
@@ -153,9 +215,15 @@ else:
                     user_resp = supabase.auth.get_user()
                     if user_resp and user_resp.user:
                         uid = user_resp.user.id
-                        # 1〜12月のデータを辞書（JSON）にまとめる
+                        
+                        # 月給データと「診断設定」を1つの大きなJSONにまとめる
                         data_to_save = {f"m{i}": st.session_state.get(f"m{i}", 0) for i in range(1, 13)}
-                        # データベースの引き出しに保存（すでにデータがあれば上書き）
+                        data_to_save["app_settings"] = {
+                            "user_category": st.session_state.user_category,
+                            "shaho_limit": st.session_state.shaho_limit,
+                            "target_key": st.session_state.target_key
+                        }
+                        
                         supabase.table("user_incomes").upsert({"user_id": uid, "income_data": data_to_save}).execute()
                         st.success("クラウドに保存しました！")
                     else:
@@ -169,14 +237,19 @@ else:
                     user_resp = supabase.auth.get_user()
                     if user_resp and user_resp.user:
                         uid = user_resp.user.id
-                        # データベースから自分のデータを検索
                         res = supabase.table("user_incomes").select("income_data").eq("user_id", uid).execute()
                         if len(res.data) > 0:
                             saved_data = res.data[0]["income_data"]
-                            # 画面にデータを復元
+                            # 給与を復元
                             for i in range(1, 13):
                                 st.session_state[f"m{i}"] = saved_data.get(f"m{i}", 0)
+                            # 設定を復元
+                            if "app_settings" in saved_data:
+                                st.session_state.user_category = saved_data["app_settings"].get("user_category", "一般")
+                                st.session_state.shaho_limit = saved_data["app_settings"].get("shaho_limit", 1300000)
+                                st.session_state.target_key = saved_data["app_settings"].get("target_key", "130万：自分の社保を免除（一般）")
                             st.success("データを読み込みました！画面を更新して反映します。")
+                            st.rerun() # 読み込み後に画面を更新して即反映
                         else:
                             st.info("保存されたデータがありません")
                     else:
